@@ -29,29 +29,34 @@
 
 'use strict';
 
-const https = require('https');
-const chalk = require('chalk');
-const commander = require('commander');
-const dns = require('dns');
-const envinfo = require('envinfo');
-const execSync = require('child_process').execSync;
-const fs = require('fs-extra');
-const hyperquest = require('hyperquest');
-const prompts = require('prompts');
+const https = require('https'); // 发起https请求
+const chalk = require('chalk'); // 有色打印
+const commander = require('commander'); // 命令行构建
+const dns = require('dns'); // dns 解析
+const envinfo = require('envinfo'); // 打印环境信息
+const execSync = require('child_process').execSync; // 同步执行命令
+const fs = require('fs-extra'); // fs 操作扩展
+const hyperquest = require('hyperquest'); // 将http请求视为流传输
+const prompts = require('prompts'); // 美化 cli 操作
 const os = require('os');
 const path = require('path');
-const semver = require('semver');
-const spawn = require('cross-spawn');
-const tmp = require('tmp');
-const unpack = require('tar-pack').unpack;
-const url = require('url');
-const validateProjectName = require('validate-npm-package-name');
+const semver = require('semver'); // npm 语义版本控制，一般用来做 package.json版本比对等
+const spawn = require('cross-spawn'); // spawn 的跨平台版本
+const tmp = require('tmp'); // 产生临时目录
+const unpack = require('tar-pack').unpack;  // 解压缩
+const url = require('url'); // url 解析
+const validateProjectName = require('validate-npm-package-name'); // 验证是否符合npm包名
 
 const packageJson = require('./package.json');
 
 let projectName;
 
+// 执行 create-react-app 逻辑
+
 function init() {
+
+  // 1.使用 commander 来构造一个 cli 程序
+
   const program = new commander.Command(packageJson.name)
     .version(packageJson.version)
     .arguments('<project-directory>')
@@ -73,6 +78,8 @@ function init() {
     .option('--use-pnp')
     .allowUnknownOption()
     .on('--help', () => {
+      // 2.打印帮助信息
+
       console.log(
         `    Only ${chalk.green('<project-directory>')} is required.`
       );
@@ -140,6 +147,7 @@ function init() {
     })
     .parse(process.argv);
 
+    // 3.打印系统环境信息
   if (program.info) {
     console.log(chalk.bold('\nEnvironment Info:'));
     console.log(
@@ -169,6 +177,8 @@ function init() {
       .then(console.log);
   }
 
+  // 4.如果使用 create-react-app 时没提供要创建的项目名称， 警告并退出
+
   if (typeof projectName === 'undefined') {
     console.error('Please specify the project directory:');
     console.log(
@@ -192,6 +202,8 @@ function init() {
   // This is important for users in environments where direct access to npm is
   // blocked by a firewall, and packages are provided exclusively via a private
   // registry.
+
+  // 5.向 npm 发送 https 请求，用来获取此包版本信息，用来检查版本并提示用户
   checkForLatestVersion()
     .catch(() => {
       try {
@@ -223,6 +235,9 @@ function init() {
         console.log();
         process.exit(1);
       } else {
+
+        // 6.执行 react app 具体逻辑
+
         createApp(
           projectName,
           program.verbose,
@@ -236,6 +251,9 @@ function init() {
 }
 
 function createApp(name, verbose, version, template, useNpm, usePnp) {
+
+  // 1.检查 node 版本
+
   const unsupportedNodeVersion = !semver.satisfies(process.version, '>=10');
   if (unsupportedNodeVersion) {
     console.log(
@@ -248,11 +266,22 @@ function createApp(name, verbose, version, template, useNpm, usePnp) {
     version = 'react-scripts@0.9.x';
   }
 
+  // 2.根据提供的名称，产生一个绝对路径，产生一个 appName。
+  /*
+  *   createApp('.git');
+  *   root:  D:\xxx\xxx\.git
+   *  appName: .git
+  * */
   const root = path.resolve(name);
   const appName = path.basename(root);
 
+  // 3.检查这个名称是否是一个合法npm包名
   checkAppName(appName);
+
+  // 4.如果目录不存在就创建
   fs.ensureDirSync(name);
+
+  // 5.检查root目录下是否存在可能冲突的多余文件，此时目录只能存在一些预定义好的内容，不如（README.md, .idea, .git等目录，如果有其他多余文件会警告并退出）
   if (!isSafeToCreateProjectIn(root, name)) {
     process.exit(1);
   }
@@ -261,6 +290,7 @@ function createApp(name, verbose, version, template, useNpm, usePnp) {
   console.log(`Creating a new React app in ${chalk.green(root)}.`);
   console.log();
 
+  // 6.定义一个空 package.json, 同步写入新项目目录
   const packageJson = {
     name: appName,
     version: '0.1.0',
@@ -271,13 +301,18 @@ function createApp(name, verbose, version, template, useNpm, usePnp) {
     JSON.stringify(packageJson, null, 2) + os.EOL
   );
 
+  // 7.检查将使用的包管理器， yarn 或 npm ,检查方式是通过  try catch execSync 是否报错
   const useYarn = useNpm ? false : shouldUseYarn();
+
+  // 8.切换工作目录到新项目目录
   const originalDirectory = process.cwd();
   process.chdir(root);
+
   if (!useYarn && !checkThatNpmCanReadCwd()) {
     process.exit(1);
   }
 
+  // 9 检查 npm 或者 yarn 版本是否达到要求
   if (!useYarn) {
     const npmInfo = checkNpmVersion();
     if (!npmInfo.hasMinNpm) {
@@ -334,6 +369,17 @@ function createApp(name, verbose, version, template, useNpm, usePnp) {
     }
   }
 
+  // 10.执行初始化项目
+  /**
+   *  里面代码写了一大堆，简单来讲就是
+   *  1.处理新项目要默认加入的依赖项, react,react-dom，react-scripts
+   *  2.根据提供的参数来决定使用 cra-template 或者 cra-template-typescript （一个是 react js 模板 一个是 react ts 模板）
+   *  3.把第二步的结果加入将安装的依赖列表
+   *
+   *  4.根据提供的参数来决定使用 npm 或者 yarn 安装
+   *  5.根据 node spawn 、（npm | yarn）, 需要的依赖项，执行 npm install 或者 yarn install
+   *
+   * */
   run(
     root,
     appName,
@@ -925,7 +971,6 @@ function setCaretRangeForRuntimeDeps(packageName) {
 
   fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + os.EOL);
 }
-
 // If project only contains files generated by GH, it’s safe.
 // Also, if project contains remnant error logs from a previous
 // installation, lets remove them now.

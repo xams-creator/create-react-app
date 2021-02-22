@@ -36,6 +36,16 @@
 
 'use strict';
 
+/**
+ *   这个项目是用来产生 react 单页应用脚手架 的 cli工具
+ *
+ *   1.注意顶部的环境声明，配合 package.json 的 bin 可以为 npm i -g 和 npx 提供执行支持
+ *
+ *   2.检查 node 版本号，如果 主版本号低于10 则退出程序
+ *
+ *   3.验证通过，执行 init 函数
+ * */
+
 var currentNodeVersion = process.versions.node;
 var semver = currentNodeVersion.split('.');
 var major = semver[0];
