@@ -10,17 +10,22 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// 1.处理 app 相关的位置常量， 如 src 目录，tsconfig文件位置，build 目录等
 const paths = require('./paths');
 
 // Make sure that including paths.js after env.js will read .env variables.
 delete require.cache[require.resolve('./paths')];
 
+// 2.确定当前脚本执行的环境
 const NODE_ENV = process.env.NODE_ENV;
 if (!NODE_ENV) {
   throw new Error(
     'The NODE_ENV environment variable is required but was not specified.'
   );
 }
+
+// 3.通过 dotenv 加载环境变量
 
 // https://github.com/bkeepers/dotenv#what-other-env-files-can-i-use
 const dotenvFiles = [
@@ -57,6 +62,8 @@ dotenvFiles.forEach(dotenvFile => {
 // Otherwise, we risk importing Node.js core modules into an app instead of webpack shims.
 // https://github.com/facebook/create-react-app/issues/1023#issuecomment-265344421
 // We also resolve them to make sure all tools using them work consistently.
+
+// 4.重复代码，可以直接用 paths.appPath，但是考虑到循环应用的情况，这里又产生了一个值
 const appDirectory = fs.realpathSync(process.cwd());
 process.env.NODE_PATH = (process.env.NODE_PATH || '')
   .split(path.delimiter)
@@ -66,8 +73,13 @@ process.env.NODE_PATH = (process.env.NODE_PATH || '')
 
 // Grab NODE_ENV and REACT_APP_* environment variables and prepare them to be
 // injected into the application via DefinePlugin in webpack configuration.
+
+// 5.在 create-react-template ，区分客户端环境变量和node环境变量，
+// 前端只能使用以 REACT_APP 开头的环境变量 和 NODE_ENV,PUBLIC_URL 等预设值，
+// 获取这些预设值的，通过getClientEnvironment 获取，webpack.DefinePlugin(stringified)实现
 const REACT_APP = /^REACT_APP_/i;
 
+// 6.从当前的 process.env 中循环读取值。 WDS_SOCKET_HOST， WDS_SOCKET_PATH，WDS_SOCKET_PORT 将用于客户端 web socket hot client
 function getClientEnvironment(publicUrl) {
   const raw = Object.keys(process.env)
     .filter(key => REACT_APP.test(key))
